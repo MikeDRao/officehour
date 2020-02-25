@@ -12,9 +12,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
-#include <asser.h>
+#include <assert.h>
 
-/* Constants that define parameters of the siulation */
+/* Constants that define parameters of the simulation */
 
 #define MAX_SEATS 3 /* Number of seats in the professor's office */
 #define professor_LIMIT 10 /* Number of students the professor can help before he needs a break */
@@ -91,7 +91,7 @@ static void take_break()
 {
 	printf("The professor is taking a break now.\n");
 	sleep(5);
-	assert(student_in_office == 0);
+	assert(students_in_office == 0);
 	students_since_break = 0;
 }
 
@@ -247,7 +247,7 @@ void* classb_student(void *si)
 	assert(classa_inoffice >= 0 && classa_inoffice <= MAX_SEATS);
 	assert(classa_inoffice == 0);
 
-	printd("Students %d from class B starts asking questions for %d minutes\n", s_info->student_id, s_info->question_time);
+	printf("Students %d from class B starts asking questions for %d minutes\n", s_info->student_id, s_info->question_time);
 	ask_questions(s_info->question_time);
 	printf("Student %d from class B finishes asking questions and prepares to leave\n", s_info->student_id);
 
@@ -312,7 +312,7 @@ int main(int nargs, char ** args)
 
 		if (s_info[i].class == CLASSA)
 		{
-			result = pthread_create(&student[i], NULL, classa_student, (void *)&s_info[i]);
+			result = pthread_create(&student_tid[i], NULL, classa_student, (void *)&s_info[i]);
 		}
 		else // student_type == CLASSB
 		{
