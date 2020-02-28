@@ -1,7 +1,7 @@
 /*
 	Michael Rao
 	1001558150
-	Justin 
+	Justin
 	1001288553
 */
 
@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <assert.h>
@@ -26,18 +27,16 @@
 #define CLASSD 3
 #define CLASSE 4
 
-/* TODO */
-/* Add your synchronization variables here */
-
-/* Basic information about simulation.  They are printed/checked at the end
- * and in assert statements during execution.
- *
- * You are responsible for maintaining the integrity of these variables in the
- * code that you develop.
- */
+// Global synchronization variables
 pthread_mutex_t mutex;
 pthread_cond_t classA;
 pthread_cond_t classB;
+char prevStudent = 'A';
+int consecutiveA = 0;
+int consecutiveB = 0;
+int totalStudents = 0;
+int A_students_left = 0;
+int B_students_left = 0;
 
 static int students_in_office;   /* Total numbers of students currently in the office */
 static int classa_inoffice;      /* Total numbers of students from class A currently in the office */
@@ -52,6 +51,7 @@ typedef struct
   int class;
 } student_info;
 
+
 /* Called at beginning of simulation.
  * TODO: Create/initialize all synchronization
  * variables and other global variables that you add.
@@ -63,13 +63,10 @@ static int initialize(student_info *si, char *filename)
   classb_inoffice = 0;
   students_since_break = 0;
 
+  // initialize mutex variables
   pthread_mutex_init( &mutex, NULL);
   pthread_cond_init( &classA, NULL);
   pthread_cond_init( &classB, NULL);
-
-  /* Initialize your synchronization variables (and
-   * other variables you might use) here
-   */
 
 
   /* Read in the data file and initialize the student array */
@@ -85,6 +82,15 @@ static int initialize(student_info *si, char *filename)
   while ( (fscanf(fp, "%d%d%d\n", &(si[i].class), &(si[i].arrival_time), &(si[i].question_time))!=EOF) &&
            i < MAX_STUDENTS )
   {
+    // get a running total of class A students, total students and class b
+    // students
+    if(si[i].class == CLASSA){
+      totalStudents++;
+      A_students_left++;
+    }else{
+      totalStudents++;
+      B_students_left++;
+    }
     i++;
   }
 
@@ -113,14 +119,16 @@ void *professorthread(void *junk)
   /* Loop while waiting for students to arrive. */
   while (1)
   {
-    
+    // take a break if 10 consecutive students arrive
     if(students_since_break == 10 && students_in_office == 0)
     {
       take_break();
     }
+    // allow class B in office when class A finishes
     if(classb_inoffice == 0){
       pthread_cond_signal(&classA);
     }
+    // allow class A in office when class B finishes
     if(classa_inoffice == 0){
       pthread_cond_signal(&classB);
     }
@@ -136,15 +144,34 @@ void *professorthread(void *junk)
  */
 void classa_enter()
 {
+  // lock the mutex before manipulating variables
   pthread_mutex_lock(&mutex);
+  // check for break condition, 3 students in office, check 5 consecutive A
+  // students and check if the office has any B students
   while(students_since_break == 10 || students_in_office == 3
-   || classb_inoffice > 0)
+   || classb_inoffice > 0 ||
+   (consecutiveA == 5 && totalStudents != A_students_left))
   {
     pthread_cond_wait(&classA, &mutex);
+  }
+  // Add 1 to the consecutive A variable if the previous student was an A
+  // student
+  if(prevStudent == 'A')
+  {
+    consecutiveA++;
+    consecutiveB = 0;
+  }
+  else
+  // if the last student was a B student then change the previous student to A
+  // and add one to the consecutive A variable
+  {
+    consecutiveA = 1;
+    prevStudent = 'A';
   }
   students_in_office += 1;
   students_since_break += 1;
   classa_inoffice += 1;
+  // release the lock on the global variables
   pthread_mutex_unlock(&mutex);
 
 }
@@ -155,15 +182,34 @@ void classa_enter()
  */
 void classb_enter()
 {
+    // lock the mutex before manipulating variables
   pthread_mutex_lock(&mutex);
+  // check for break condition, 3 students in office, check 5 consecutive B
+  // students and check if the office has any A students
   while(students_since_break == 10 || students_in_office == 3
-    || classa_inoffice > 0)
+    || classa_inoffice > 0 ||
+    (consecutiveB == 5 && totalStudents != B_students_left))
   {
     pthread_cond_wait(&classB, &mutex);
+  }
+  // Add 1 to the consecutive B variable if the previous student was an B
+  // student
+  if(prevStudent == 'B')
+  {
+    consecutiveB++;
+    consecutiveA = 0;
+  }
+  // if the last student was a A student then change the previous student to B
+  // and add one to the consecutive B variable
+  else
+  {
+    consecutiveB = 1;
+    prevStudent = 'B';
   }
   students_in_office += 1;
   students_since_break += 1;
   classb_inoffice += 1;
+  // release the lock on the global variables
   pthread_mutex_unlock(&mutex);
 
 }
@@ -186,6 +232,10 @@ static void classa_leave()
   pthread_mutex_lock(&mutex);
   students_in_office -= 1;
   classa_inoffice -= 1;
+  // change these variables accordingly (used for 5 consecutive student
+  // requirement)
+  A_students_left--;
+  totalStudents--;
   pthread_mutex_unlock(&mutex);
 }
 
@@ -198,6 +248,10 @@ static void classb_leave()
   pthread_mutex_lock(&mutex);
   students_in_office -= 1;
   classb_inoffice -= 1;
+  // change these variables accordingly (used for 5 consecutive student
+  // requirement)
+  B_students_left--;
+  totalStudents--;
   pthread_mutex_unlock(&mutex);
 }
 
@@ -349,4 +403,3 @@ int main(int nargs, char **args)
 
   return 0;
 }
-
