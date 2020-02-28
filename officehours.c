@@ -1,8 +1,9 @@
 /*
-	Michael Rao
-	1001558150
-	Justin
-	1001288553
+	Name: Michael Rao
+	ID: 1001558150
+
+  Name: Justin Erdmann
+	ID: 1001288553
 */
 
 #include <pthread.h>
@@ -31,12 +32,22 @@
 pthread_mutex_t mutex;
 pthread_cond_t classA;
 pthread_cond_t classB;
+// Indicates the class of the previous student
 char prevStudent = 'A';
 int consecutiveA = 0;
 int consecutiveB = 0;
+// Indicates the amount of students total students that haven't been processed
 int totalStudents = 0;
+// Indicates the amount of students from Class A that haven't been processed
 int A_students_left = 0;
+// Indicates the amount of students from Class B that haven't been processed
 int B_students_left = 0;
+
+/* We need to keep track of The total students, Students left from A, and
+   students left from B in order to meet Requirement #4. If 5 students from
+   Class A have consecutively visited the professor we need to let students
+   from Class B in - unless there are no students in the queue that are class B.
+*/
 
 static int students_in_office;   /* Total numbers of students currently in the office */
 static int classa_inoffice;      /* Total numbers of students from class A currently in the office */
@@ -52,10 +63,6 @@ typedef struct
 } student_info;
 
 
-/* Called at beginning of simulation.
- * TODO: Create/initialize all synchronization
- * variables and other global variables that you add.
- */
 static int initialize(student_info *si, char *filename)
 {
   students_in_office = 0;
@@ -65,6 +72,7 @@ static int initialize(student_info *si, char *filename)
 
   // initialize mutex variables
   pthread_mutex_init( &mutex, NULL);
+  // initialize mutex conitionals
   pthread_cond_init( &classA, NULL);
   pthread_cond_init( &classB, NULL);
 
@@ -109,9 +117,9 @@ static void take_break()
   students_since_break = 0;
 }
 
-/* Code for the professor thread. This is fully implemented except for synchronization
- * with the students.  See the comments within the function for details.
- */
+/* Professor thread grants students entry into the office based on the
+ conditions simulated by the global variables
+*/
 void *professorthread(void *junk)
 {
   printf("The professor arrived and is starting his office hours\n");
@@ -119,7 +127,8 @@ void *professorthread(void *junk)
   /* Loop while waiting for students to arrive. */
   while (1)
   {
-    // take a break if 10 consecutive students arrive
+    // Take a break if 10 consecutive students arrive (also wait until all
+    // students have left the office before taking a break)
     if(students_since_break == 10 && students_in_office == 0)
     {
       take_break();
@@ -138,26 +147,30 @@ void *professorthread(void *junk)
 }
 
 
-/* Code executed by a class A student to enter the office.
- * You have to implement this.  Do not delete the assert() statements,
- * but feel free to add your own.
- */
+/* This function will pause the student thread until the conditions are met
+  based on the global variables. It will also keep a tally of the consecutive
+  students from Class A that have entered in order to preserve the fairness of
+  the office per Requirement #4
+*/
 void classa_enter()
 {
   // lock the mutex before manipulating variables
   pthread_mutex_lock(&mutex);
-  // check for break condition, 3 students in office, check 5 consecutive A
-  // students and check if the office has any B students
+  // Check for break condition, 3 students in office, check 5 consecutive A
+  // students and check if the office has any B students... if any of these
+  // conditions are true hold the thread until all conditions are fufilled
   while(students_since_break == 10 || students_in_office == 3
    || classb_inoffice > 0 ||
    (consecutiveA == 5 && totalStudents != A_students_left))
   {
     pthread_cond_wait(&classA, &mutex);
   }
-  // Add 1 to the consecutive A variable if the previous student was an A
-  // student
+  // Once thread runs, add 1 to the consecutive A variable if the previous
+  // student was an A student
   if(prevStudent == 'A')
   {
+    // If the last student was from Class A -> reset the Class B consecutive
+    // total..
     consecutiveA++;
     consecutiveB = 0;
   }
@@ -176,30 +189,32 @@ void classa_enter()
 
 }
 
-/* Code executed by a class B student to enter the office.
- * You have to implement this.  Do not delete the assert() statements,
- * but feel free to add your own.
- */
+/* This function will pause the student thread until the conditions are met
+  based on the global variables. It will also keep a tally of the consecutive
+  students from Class B that have entered in order to preserve the fairness of
+  the office per Requirement #4
+*/
 void classb_enter()
 {
     // lock the mutex before manipulating variables
   pthread_mutex_lock(&mutex);
-  // check for break condition, 3 students in office, check 5 consecutive B
-  // students and check if the office has any A students
+  // Check for break condition, 3 students in office, check 5 consecutive A
+  // students and check if the office has any A students... if any of these
+  // conditions are true hold the thread until all conditions are fufilled
   while(students_since_break == 10 || students_in_office == 3
     || classa_inoffice > 0 ||
     (consecutiveB == 5 && totalStudents != B_students_left))
   {
     pthread_cond_wait(&classB, &mutex);
   }
-  // Add 1 to the consecutive B variable if the previous student was an B
-  // student
+  // Once thread runs, add 1 to the consecutive B variable if the previous
+  // student was an A student
   if(prevStudent == 'B')
   {
     consecutiveB++;
     consecutiveA = 0;
   }
-  // if the last student was a A student then change the previous student to B
+  // If the last student was a A student then change the previous student to B
   // and add one to the consecutive B variable
   else
   {
@@ -223,10 +238,8 @@ static void ask_questions(int t)
 }
 
 
-/* Code executed by a class A student when leaving the office.
- * You need to implement this.  Do not delete the assert() statements,
- * but feel free to add as many of your own as you like.
- */
+/* This function will modify the global variables as students leave the office
+*/
 static void classa_leave()
 {
   pthread_mutex_lock(&mutex);
@@ -239,10 +252,8 @@ static void classa_leave()
   pthread_mutex_unlock(&mutex);
 }
 
-/* Code executed by a class B student when leaving the office.
- * You need to implement this.  Do not delete the assert() statements,
- * but feel free to add as many of your own as you like.
- */
+/* This function will modify the global variables as students leave the office
+*/
 static void classb_leave()
 {
   pthread_mutex_lock(&mutex);
