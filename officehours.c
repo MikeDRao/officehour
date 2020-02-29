@@ -1,7 +1,6 @@
 /*
 	Name: Michael Rao
 	ID: 1001558150
-
   Name: Justin Erdmann
 	ID: 1001288553
 */
@@ -61,6 +60,14 @@ typedef struct
   int student_id;
   int class;
 } student_info;
+
+// Defined globally for use in check_for_class_b()
+student_info s_info[MAX_STUDENTS];
+
+/* Variable used for arrival time synchronization (keeps track of the current
+time over the course of the simulation and is increased in ask_questions())
+*/
+int current_time;
 
 
 static int initialize(student_info *si, char *filename)
@@ -146,12 +153,46 @@ void *professorthread(void *junk)
   pthread_exit(NULL);
 }
 
+/*This function is used to synchronize arrival times i.e a student arriving
+at 0 gets served befor a student arriving at 10. It checks to see if there is a
+student waiting in line from Class A and returns true if it finds one
+*/
+bool check_for_class_b(){
+  int i;
+  int n = sizeof(s_info) / sizeof(s_info[0]);
+  for(i = 0; i < n; i++)
+  {
+    if(s_info[i].class == CLASSA && s_info[i].arrival_time <= current_time)
+    {
+      return true;
+    }
+  }
+  return false;
+}
+
+/*This function is used to synchronize arrival times i.e a student arriving
+at 0 gets served befor a student arriving at 10. It checks to see if there is a
+student waiting in line from Class B and returns true if it finds one
+*/
+bool check_for_class_a(){
+  int i;
+  int n = sizeof(s_info) / sizeof(s_info[0]);
+  for(i = 0; i < n; i++)
+  {
+    if(s_info[i].class == CLASSB && s_info[i].arrival_time <= current_time)
+    {
+      return true;
+    }
+  }
+  return false;
+}
 
 /* This function will pause the student thread until the conditions are met
   based on the global variables. It will also keep a tally of the consecutive
   students from Class A that have entered in order to preserve the fairness of
   the office per Requirement #4
 */
+
 void classa_enter()
 {
   // lock the mutex before manipulating variables
@@ -161,7 +202,8 @@ void classa_enter()
   // conditions are true hold the thread until all conditions are fufilled
   while(students_since_break == 10 || students_in_office == 3
    || classb_inoffice > 0 ||
-   (consecutiveA == 5 && totalStudents != A_students_left))
+   (consecutiveA == 5 &&
+   ((totalStudents != A_students_left) && check_for_class_a())))
   {
     pthread_cond_wait(&classA, &mutex);
   }
@@ -203,7 +245,8 @@ void classb_enter()
   // conditions are true hold the thread until all conditions are fufilled
   while(students_since_break == 10 || students_in_office == 3
     || classa_inoffice > 0 ||
-    (consecutiveB == 5 && totalStudents != B_students_left))
+    (consecutiveB == 5 &&
+    ((totalStudents != B_students_left) && check_for_class_b())))
   {
     pthread_cond_wait(&classB, &mutex);
   }
@@ -235,6 +278,9 @@ void classb_enter()
 static void ask_questions(int t)
 {
   sleep(t);
+  pthread_mutex_lock(&mutex);
+    current_time += t;
+  pthread_mutex_unlock(&mutex);
 }
 
 
@@ -349,7 +395,7 @@ int main(int nargs, char **args)
   void *status;
   pthread_t professor_tid;
   pthread_t student_tid[MAX_STUDENTS];
-  student_info s_info[MAX_STUDENTS];
+  current_time = 0;
 
   if (nargs != 2)
   {
